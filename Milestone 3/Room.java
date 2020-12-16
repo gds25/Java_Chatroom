@@ -1,6 +1,7 @@
 package server;
 
 import java.util.ArrayList;
+
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
@@ -8,11 +9,14 @@ import java.util.Random;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+//import client.Player;
+
 public class Room implements AutoCloseable {
     private static SocketServer server;// used to refer to accessible server functions
     private String name;
     private final static Logger log = Logger.getLogger(Room.class.getName());
     
+    private List<ServerThread> clients = new ArrayList<ServerThread>();
     
     // Commands
     private final static String COMMAND_TRIGGER = "/";
@@ -20,8 +24,9 @@ public class Room implements AutoCloseable {
     private final static String JOIN_ROOM = "joinroom";
     private final static String FLIP = "flip";
     private final static String ROLL = "roll";
+    private final static String MUTE = "mute";
+    private final static String UNMUTE = "unmute";
     
-
     public Room(String name) {
 	this.name = name;
 
@@ -35,11 +40,20 @@ public class Room implements AutoCloseable {
 	return name;
     }
 
-    private List<ServerThread> clients = new ArrayList<ServerThread>();
-
     protected synchronized void addClient(ServerThread client) {
 	client.setCurrentRoom(this);
-	if (clients.indexOf(client) > -1) {
+	boolean exists = false;
+	// since we updated to a different List type, we'll need to loop through to find
+	// the client to check against
+	Iterator<ServerThread> iter = clients.iterator();
+	while (iter.hasNext()) {
+	    ServerThread c = iter.next();
+	    if (c == client) {
+		exists = true;
+		}
+		break;
+	}
+	if (exists) {
 	    log.log(Level.INFO, "Attempting to add a client that already exists");
 	}
 	else {
@@ -57,13 +71,20 @@ public class Room implements AutoCloseable {
 	while (iter.hasNext()) {
 	    ServerThread c = iter.next();
 	    if (c != client) {
-		boolean messageSent = client.sendConnectionStatus(c.getClientName(), true, null);
+		client.sendConnectionStatus(c.getClientName(), true, null);
 	    }
 	}
     }
 
     protected synchronized void removeClient(ServerThread client) {
-	clients.remove(client);
+    	Iterator<ServerThread> iter = clients.iterator();
+    	while (iter.hasNext()) {
+    	    ServerThread c = iter.next();
+    	    if (c == client) {
+    		iter.remove();
+    		log.log(Level.INFO, "Removed client " + c.getClientName() + " from " + getName());
+    	    }
+    	}
 	if (clients.size() > 0) {
 	    // sendMessage(client, "left the room");
 	    sendConnectionStatus(client, false, "left the room " + getName());
@@ -120,8 +141,6 @@ public class Room implements AutoCloseable {
     	sendMessage(client, "<b><i><font color=gray>" + message + "</font></i></b>");
     }
     
-    
-    
     /***
      * Helper function to process messages to trigger different functionality.
      * 
@@ -129,11 +148,12 @@ public class Room implements AutoCloseable {
      * @param client  The sender of the message (since they'll be the ones
      *                triggering the actions)
      */
+    
     private boolean processCommands(String message, ServerThread client) {
 	boolean wasCommand = false;
 	try {
 		if (message.indexOf(COMMAND_TRIGGER) > -1) {
-		String[] comm = message.split(COMMAND_TRIGGER);
+		String[] comm = message.split(COMMAND_TRIGGER, 2);
 		
 		log.log(Level.INFO, message);
 		String part1 = comm[1];
@@ -166,8 +186,64 @@ public class Room implements AutoCloseable {
 		    roll(client);
 		    wasCommand = true;
 		    break;
-		}		
+		  //added "mute" and "unmute" and potential cases
+	    case MUTE: 
+	    	String[] muted = comm2[1].split(", ");
+	    	List<String> muteList = new ArrayList<String>();
+	    	// can mute multiple clients separated by comma
+	    	for (String user : muted) {
+	    		if (!client.isMuted(user)) {
+		    		client.mute(user);
+		    		muteList.add(user);
+		    	}
+	    	}
+	    	sendPrivateMessage(client, " muted you", muteList);
+	   
+	    	wasCommand = true;
+	    	break;
+	    case UNMUTE:
+	    	String[] unmuted = comm2[1].split(", ");
+	    	List<String> unmuteList = new ArrayList<String>();
+	    	// can unmute multiple clients separated by comma
+	    	for (String user : unmuted) {
+	    		if (client.isMuted(user)) {
+	    			client.unmute(user);
+	    			unmuteList.add(user);
+		    	}
+	    	}
+	    	sendPrivateMessage(client, " unmuted you", unmuteList);
+	    	
+	    	wasCommand = true;
+	    	break;
+		}
 		} 
+		// private message functionality
+		// message will be sent to every user specified with an "@" 
+		//ex. "@user1 @user2 This message will be sent to user1 and user2."
+		else if (message.indexOf("@") > -1) {
+			String command = "";
+			String[] comm = message.split("@", 2);
+	
+			String part1 = comm[1];
+			String[] comm2 = part1.split(" @");
+			List<String> users = new ArrayList<String>();
+				// get list of intended users 
+			for (String user : comm2) {
+				if(!user.equals(comm2[comm2.length-1])) {
+					users.add(user.toLowerCase());
+				}
+				else {	// get message
+					String[] pm = user.split(" ", 2);
+					String last = pm[0];
+					users.add(last.toLowerCase());
+					command = pm[1];
+				}
+			}
+			users.add(client.getClientName());
+			sendPrivateMessage(client, "<b> /pm </b> " + command, users);
+	
+			wasCommand = true;
+		}
 		// change text functionality
 		else {
 			String command = message;
@@ -176,7 +252,7 @@ public class Room implements AutoCloseable {
 			if (command.matches("(.*)\\*(.+)\\*(.*)")) {
 				int count = 0;
 				String changeText = "";
-			ArrayList<String> tags = new ArrayList();
+			ArrayList<String> tags = new ArrayList<String>();
 			for (int i = 0; i < command.length(); i++) {
 				if (Character.toString(command.charAt(i)).equals("*")) {
 					count++;
@@ -226,7 +302,7 @@ public class Room implements AutoCloseable {
 			if (command.matches("(.*)_(.+)_(.*)")) {
 				int count = 0;
 				String changeText = "";
-				ArrayList<String> tags = new ArrayList();
+				ArrayList<String> tags = new ArrayList<String>();
 				for (int i = 0; i < command.length(); i++) {
 					if (Character.toString(command.charAt(i)).equals("_")) {
 						count++;
@@ -240,7 +316,7 @@ public class Room implements AutoCloseable {
 				}
 				String [] italics = command.split("_");
 				if (italics.length == 0) {
-					changeText += "<b>_</b>";
+					changeText += "<i>_</i>";
 							if (command.length() > 3)
 						changeText += command.substring(3);
 					
@@ -266,7 +342,7 @@ public class Room implements AutoCloseable {
 			if (command.matches("(.*)~(.+)~(.*)")) {
 				int count = 0;
 				String changeText = "";
-				ArrayList<String> tags = new ArrayList();
+				ArrayList<String> tags = new ArrayList<String>();
 				for (int i = 0; i < command.length(); i++) {
 					if (Character.toString(command.charAt(i)).equals("~")) {
 						count++;
@@ -369,8 +445,8 @@ public class Room implements AutoCloseable {
 	    ServerThread c = iter.next();
 	    boolean messageSent = c.sendConnectionStatus(client.getClientName(), isConnect, message);
 	    if (!messageSent) {
-		iter.remove();
-		log.log(Level.INFO, "Removed client " + c.getId());
+			iter.remove();
+			log.log(Level.INFO, "Removed client " + c.getId());
 	    }
 	}
     }
@@ -392,13 +468,37 @@ public class Room implements AutoCloseable {
 	Iterator<ServerThread> iter = clients.iterator();
 	while (iter.hasNext()) {
 	    ServerThread client = iter.next();
-	    boolean messageSent = client.send(sender.getClientName(), message);
-	    if (!messageSent) {
-		iter.remove();
-		log.log(Level.INFO, "Removed client " + client.getId());
+	    	// send message if sender not muted
+	    if (!client.isMuted(sender.getClientName())){
+	    	boolean messageSent = client.send(sender.getClientName(), message);
+		    if (!messageSent) {
+		    	iter.remove();
+		    }
 	    }
 	}
     }
+    
+    protected void sendPrivateMessage(ServerThread sender, String message, List<String> users) {
+	log.log(Level.INFO, getName() + ": Sending message to " + users.size() + " clients");
+	if (processCommands(message, sender)) {
+	    // it was a command, don't broadcast
+	    return;
+	}
+	Iterator<ServerThread> iter = clients.iterator();
+	while (iter.hasNext()) {
+	    ServerThread client = iter.next();
+	    	// send message if sender not muted
+	    if(users.contains(client.getClientName().toLowerCase())) {
+	    	if (!client.isMuted(sender.getClientName())){
+	    		boolean messageSent = client.send(sender.getClientName(), message);
+			    if (!messageSent) {
+			    	iter.remove();
+			    }
+	    	}
+	    }
+	}
+    }
+    
     
     public List<String> getRooms(String search) {
     	return server.getRooms(search);
@@ -415,15 +515,14 @@ public class Room implements AutoCloseable {
 	    Iterator<ServerThread> iter = clients.iterator();
 	    Room lobby = server.getLobby();
 	    while (iter.hasNext()) {
-		ServerThread client = iter.next();
-		lobby.addClient(client);
-		iter.remove();
+			ServerThread client = iter.next();
+			lobby.addClient(client);
+			iter.remove();
 	    }
 	    log.log(Level.INFO, "Done Migrating " + clients.size() + " to Lobby");
 	}
 	server.cleanupRoom(this);
 	name = null;
-	SocketServer.isRunning = false;
 	// should be eligible for garbage collection now
     }
 
