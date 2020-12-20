@@ -63,9 +63,9 @@ public class Room implements AutoCloseable {
 		sendConnectionStatus(client, true, "joined the room " + getName());
 		updateClientList(client);
 		// call serverUI addClient if serverUI is up
-		//if (SocketServer.run.equals("n") && getName().equals("Lobby")) {
-		//	server.addClient(client);
-		//}
+		if (SocketServer.run.equals("n") && getName().equals("Lobby")) {
+			server.addClient(client);
+		}
 	    }
 	}
     }
@@ -92,9 +92,9 @@ public class Room implements AutoCloseable {
 	if (clients.size() > 0) {
 	    // sendMessage(client, "left the room");
 	    sendConnectionStatus(client, false, "left the room " + getName());
-		//if (SocketServer.run.equals("n") && getName().equals("Lobby")) {
-		//	server.removeClient(client);
-		//}
+		if (SocketServer.run.equals("n") && getName().equals("Lobby")) {
+			server.removeClient(client);
+		}
 	}
 	else {
 	    cleanupEmptyRoom();

@@ -2,10 +2,11 @@ package server;
 
  import java.awt.BorderLayout;
 
+
 import java.awt.CardLayout;
 import java.awt.Component;
 import java.awt.Dimension;
-import java.awt.FontMetrics;
+// import java.awt.FontMetrics;
 import java.awt.Toolkit;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
@@ -69,7 +70,6 @@ import javax.swing.ScrollPaneConstants;
  	    Room.setServer(this);
  	    lobby = new Room(LOBBY);// , this);
  	    rooms.add(lobby);
- 	    /*
  	    if (headless.equals("n")) { //initialize UI if called in CLI
  	    	setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 	 	   	windowSize.width *= .4;
@@ -84,7 +84,7 @@ import javax.swing.ScrollPaneConstants;
 			createPanelHome();
 			createClientList();
 			showUI();
- 	    }  	  */
+ 	    }  	  
  	    while (SocketServer.isRunning) {
  		try {
  		    Socket client = serverSocket.accept();
@@ -323,5 +323,216 @@ import javax.swing.ScrollPaneConstants;
 	 	}
     }
 
+     
+/**
+ * UI Porperties of server
+ */
+
+// gets time since server has been started
+String getUptime() {
+	RuntimeMXBean rb = ManagementFactory.getRuntimeMXBean();
+	long uptime = rb.getUptime() / 1000;
+	return Long.toString(uptime) + " seconds";
+}
+
+// gets total used memory of the server
+String getMemory() {
+	double memory = (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / (1024*1024);
+	String memUsage =  memory + " MB";
+	return memUsage;
+}
+
+void createPanelHome() {
+	JPanel panel = new JPanel();
+	panel.setLayout(new BorderLayout());
+	
+	
+	textArea = new JPanel();
+	textArea.setLayout(new BoxLayout(textArea, BoxLayout.Y_AXIS));
+	textArea.setAlignmentY(Component.BOTTOM_ALIGNMENT);
+	JScrollPane scroll = new JScrollPane(textArea);
+	scroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+	scroll.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
+	Dimension d = new Dimension((int) (windowSize.width * .3), windowSize.height);
+	scroll.setPreferredSize(d);
+	scroll.setMinimumSize(d);
+	scroll.setMaximumSize(d);
+	panel.add(scroll, BorderLayout.CENTER);
+	
+
+	JPanel input = new JPanel();
+	input.setLayout(new BoxLayout(input, BoxLayout.X_AXIS));
+	
+	// get and show initial server uptime (should be near 0 seconds on server start)
+	JEditorPane showUptime = new JEditorPane();
+	showUptime.setEditable(false);
+	showUptime.setText("Server uptime: " + getUptime());
+
+	textArea.add(showUptime);
+	
+	//get and show initial server memory usage (estimated in MB)
+	JEditorPane showMemUsage = new JEditorPane();
+	showMemUsage.setEditable(false);
+	showMemUsage.setText("Server memory usage: " + getMemory());
+
+	textArea.add(showMemUsage);
+	
+	// press to refresh server uptime and memory usage
+	JButton refresh = new JButton("Refresh");
+	refresh.addActionListener(new ActionListener() {
+
+	    @Override
+	    public void actionPerformed(ActionEvent e) {
+	    	
+	    	showUptime.setText("Server uptime: " + getUptime());
+			showMemUsage.setText("Server memory usage: " + getMemory());
+	    
+	    }});
+	
+	input.add(refresh);
+	
+	// press to kill the server
+	JButton terminate = new JButton("Close Server");
+	terminate.setAlignmentY(Component.RIGHT_ALIGNMENT);
+
+	terminate.addActionListener(new ActionListener() {
+
+	    @Override
+	    public void actionPerformed(ActionEvent e) {
+	    	cleanup();
+	    	isRunning = false;
+	    	System.exit(0);
+	    }});
+	
+	input.add(terminate);
+	panel.add(input, BorderLayout.SOUTH);
+	this.add(panel);
+}
+
+void showUI() {
+	pack();
+	Dimension lock = textArea.getSize();
+	textArea.setMaximumSize(lock);
+	lock = userPanel.getSize();
+	userPanel.setMaximumSize(lock);
+	setVisible(true);
+}
+
+// this JPanel holds all connected clients
+void createClientList() {
+	userPanel = new JPanel();
+	
+	userPanel.setLayout(new BoxLayout(userPanel, BoxLayout.Y_AXIS));
+	userPanel.setAlignmentY(Component.TOP_ALIGNMENT);
+	
+	JEditorPane clients = new JEditorPane();
+	clients.setText("Connected Clients");
+	clients.setEditable(false);
+	
+	Dimension p = new Dimension(123, 30);
+	clients.setPreferredSize(p);
+	clients.setMinimumSize(p);
+	clients.setMaximumSize(p);
+	
+	userPanel.add(clients);
+
+	JScrollPane scroll = new JScrollPane(userPanel);
+	scroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+	scroll.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
+
+	Dimension d = new Dimension((int) (windowSize.width * .4), windowSize.height);
+	scroll.setPreferredSize(d);
+	scroll.setMinimumSize(d);
+	scroll.setMaximumSize(d);
+
+	
+	textArea.getParent().getParent().getParent().add(scroll, BorderLayout.EAST);
+
+}
+
+// add client to userPanel on connect
+void addClient(ServerThread client) {
+	//System.out.println(client.getClientName() + " joined.");
+ 	JPanel addToList = new JPanel();
+
+ 	addToList.setAlignmentY(Component.TOP_ALIGNMENT);
+
+	Dimension d = new Dimension((int) (windowSize.width * .4), (int) (windowSize.height * .2));
+	addToList.setPreferredSize(d);
+	addToList.setMinimumSize(d);
+	addToList.setMaximumSize(d);
+	
+		Client c = new Client(client.getClientName());
+		Dimension p = new Dimension(userPanel.getSize().width, 30);
+		c.setPreferredSize(p);
+		c.setMinimumSize(p);
+		c.setMaximumSize(p);
+		
+		clients.add(c);
+		
+		// disconnect client from server when pressed
+		//every client has a button
+		JButton disconnect = new JButton("Disconnect");
+		addToList.add(c);
+		addToList.add(disconnect);
+		
+		
+		disconnect.addActionListener(new ActionListener() {
+	
+		    @Override
+		    public void actionPerformed(ActionEvent e) {
+				removeClient(client, c, addToList);
+
+		    }
+		}
+		);
+		userPanel.add(addToList);
+		userArray.add(c);
+		pack();
+	}
+
+//remove client on button press
+ void removeClient(ServerThread client, Client c, JPanel addToList) {
+ 		userPanel.remove(addToList);
+ 		c.removeAll();
+ 		userPanel.revalidate();
+ 		userPanel.repaint();
+ 		if (client.isRunning == true) {
+ 			client.disconnect();
+ 		}
+ 		pack();
+ }
+ 
+ // this is used in Room class, removes client from userPanel when they close their UI
+ void removeClient(ServerThread client) {
+	Iterator<Client> iter = clients.iterator();
+ 	while (iter.hasNext()) {
+ 	    Client c = iter.next();
+ 	    if (c.getName().equals(client.getClientName())) {
+ 	    	iter.remove();
+ 	    	c.removeAll();
+ 	    	if (client.isRunning == true) {
+	  			client.disconnect();
+	  		}
+ 	    }
+ 	    Iterator<JPanel> names = userArray.iterator();
+ 	    while (names.hasNext()) {
+ 	    	JPanel p = names.next();
+ 	    	for (int i = 0; i < p.getComponentCount(); ++i) {
+     	        if (p.getComponent(i).equals(c)) {
+     	        	userPanel.remove(p);
+     	    		userPanel.revalidate();
+     	    		userPanel.repaint();
+     	    		break;
+     	        }
+ 	        }
+ 	    }
+ 	}
+ 	pack();
+ }
+
+
+
 
  }
+  
